@@ -200,13 +200,12 @@ class Blocks {
       return;
     }
 
-    this.reindexFlag = false;
-
     const blockchainInfo = await bitcoinClient.getBlockchainInfo();
     if (blockchainInfo.blocks !== blockchainInfo.headers) { // Wait for node to sync
       return;
     }
 
+    this.reindexFlag = false;
     this.blockIndexingStarted = true;
     this.blockIndexingCompleted = false;
 
@@ -298,6 +297,7 @@ class Blocks {
       logger.info(`${blockHeightTip - this.currentBlockHeight} blocks since tip. Fast forwarding to the ${config.MEMPOOL.INITIAL_BLOCKS_AMOUNT} recent blocks`);
       this.currentBlockHeight = blockHeightTip - config.MEMPOOL.INITIAL_BLOCKS_AMOUNT;
       fastForwarded = true;
+      this.reindexFlag = true; // Make sure to index the skipped blocks #1619
     }
 
     if (!this.lastDifficultyAdjustmentTime) {
