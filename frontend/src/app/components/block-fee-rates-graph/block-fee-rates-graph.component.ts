@@ -2,17 +2,17 @@ import { ChangeDetectionStrategy, Component, Inject, Input, LOCALE_ID, NgZone, O
 import { EChartsOption } from 'echarts';
 import { Observable } from 'rxjs';
 import { map, share, startWith, switchMap, tap } from 'rxjs/operators';
-import { ApiService } from 'src/app/services/api.service';
-import { SeoService } from 'src/app/services/seo.service';
+import { ApiService } from '../../services/api.service';
+import { SeoService } from '../../services/seo.service';
 import { formatNumber } from '@angular/common';
-import { FormBuilder, FormGroup } from '@angular/forms';
-import { download, formatterXAxis, formatterXAxisLabel, formatterXAxisTimeCategory } from 'src/app/shared/graphs.utils';
-import { StorageService } from 'src/app/services/storage.service';
-import { MiningService } from 'src/app/services/mining.service';
-import { selectPowerOfTen } from 'src/app/bitcoin.utils';
-import { RelativeUrlPipe } from 'src/app/shared/pipes/relative-url/relative-url.pipe';
-import { StateService } from 'src/app/services/state.service';
-import { Router } from '@angular/router';
+import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
+import { download, formatterXAxis, formatterXAxisLabel, formatterXAxisTimeCategory } from '../../shared/graphs.utils';
+import { StorageService } from '../../services/storage.service';
+import { MiningService } from '../../services/mining.service';
+import { selectPowerOfTen } from '../../bitcoin.utils';
+import { RelativeUrlPipe } from '../../shared/pipes/relative-url/relative-url.pipe';
+import { StateService } from '../../services/state.service';
+import { ActivatedRoute, Router } from '@angular/router';
 
 @Component({
   selector: 'app-block-fee-rates-graph',
@@ -33,7 +33,7 @@ export class BlockFeeRatesGraphComponent implements OnInit {
   @Input() left: number | string = 75;
 
   miningWindowPreference: string;
-  radioGroupForm: FormGroup;
+  radioGroupForm: UntypedFormGroup;
 
   chartOptions: EChartsOption = {};
   chartInitOptions = {
@@ -50,33 +50,42 @@ export class BlockFeeRatesGraphComponent implements OnInit {
     @Inject(LOCALE_ID) public locale: string,
     private seoService: SeoService,
     private apiService: ApiService,
-    private formBuilder: FormBuilder,
+    private formBuilder: UntypedFormBuilder,
     private storageService: StorageService,
     private miningService: MiningService,
     private stateService: StateService,
     private router: Router,
     private zone: NgZone,
+    private route: ActivatedRoute,
   ) {
     this.radioGroupForm = this.formBuilder.group({ dateSpan: '1y' });
     this.radioGroupForm.controls.dateSpan.setValue('1y');
   }
 
   ngOnInit(): void {
-    this.seoService.setTitle($localize`:@@mining.block-fee-rates:Block Fee Rates`);
+    this.seoService.setTitle($localize`:@@ed8e33059967f554ff06b4f5b6049c465b92d9b3:Block Fee Rates`);
     this.miningWindowPreference = this.miningService.getDefaultTimespan('24h');
     this.radioGroupForm = this.formBuilder.group({ dateSpan: this.miningWindowPreference });
     this.radioGroupForm.controls.dateSpan.setValue(this.miningWindowPreference);
 
+    this.route
+      .fragment
+      .subscribe((fragment) => {
+        if (['24h', '3d', '1w', '1m', '3m', '6m', '1y', '2y', '3y', 'all'].indexOf(fragment) > -1) {
+          this.radioGroupForm.controls.dateSpan.setValue(fragment, { emitEvent: false });
+        }
+      });
+
     this.statsObservable$ = this.radioGroupForm.get('dateSpan').valueChanges
       .pipe(
-        startWith(this.miningWindowPreference),
+        startWith(this.radioGroupForm.controls.dateSpan.value),
         switchMap((timespan) => {
           this.storageService.setValue('miningWindowPreference', timespan);
           this.timespan = timespan;
           this.isLoading = true;
           return this.apiService.getHistoricalBlockFeeRates$(timespan)
             .pipe(
-              tap((data: any) => {
+              tap((response) => {
                 // Group by percentile
                 const seriesData = {
                   'Min': [],
@@ -87,15 +96,15 @@ export class BlockFeeRatesGraphComponent implements OnInit {
                   '90th': [],
                   'Max': []
                 };
-                for (const rate of data.blockFeeRates) {
+                for (const rate of response.body) {
                   const timestamp = rate.timestamp * 1000;
-                  seriesData['Min'].push([timestamp, rate.avg_fee_0, rate.avg_height]);
-                  seriesData['10th'].push([timestamp, rate.avg_fee_10, rate.avg_height]);
-                  seriesData['25th'].push([timestamp, rate.avg_fee_25, rate.avg_height]);
-                  seriesData['Median'].push([timestamp, rate.avg_fee_50, rate.avg_height]);
-                  seriesData['75th'].push([timestamp, rate.avg_fee_75, rate.avg_height]);
-                  seriesData['90th'].push([timestamp, rate.avg_fee_90, rate.avg_height]);
-                  seriesData['Max'].push([timestamp, rate.avg_fee_100, rate.avg_height]);
+                  seriesData['Min'].push([timestamp, rate.avgFee_0, rate.avgHeight]);
+                  seriesData['10th'].push([timestamp, rate.avgFee_10, rate.avgHeight]);
+                  seriesData['25th'].push([timestamp, rate.avgFee_25, rate.avgHeight]);
+                  seriesData['Median'].push([timestamp, rate.avgFee_50, rate.avgHeight]);
+                  seriesData['75th'].push([timestamp, rate.avgFee_75, rate.avgHeight]);
+                  seriesData['90th'].push([timestamp, rate.avgFee_90, rate.avgHeight]);
+                  seriesData['Max'].push([timestamp, rate.avgFee_100, rate.avgHeight]);
                 }
 
                 // Prepare chart
@@ -130,13 +139,9 @@ export class BlockFeeRatesGraphComponent implements OnInit {
                 });
                 this.isLoading = false;
               }),
-              map((data: any) => {
-                const availableTimespanDay = (
-                  (new Date().getTime() / 1000) - (data.oldestIndexedBlockTimestamp)
-                ) / 3600 / 24;
-
+              map((response) => {
                 return {
-                  availableTimespanDay: availableTimespanDay,
+                  blockCount: parseInt(response.headers.get('x-total-count'), 10),
                 };
               }),
             );
@@ -169,21 +174,20 @@ export class BlockFeeRatesGraphComponent implements OnInit {
           align: 'left',
         },
         borderColor: '#000',
-        formatter: function (data) {
+        formatter: function(data) {
           if (data.length <= 0) {
             return '';
           }
-          let tooltip = `<b style="color: white; margin-left: 2px">
-            ${formatterXAxis(this.locale, this.timespan, parseInt(data[0].axisValue, 10))}</b><br>`;
+          let tooltip = `<b style="color: white; margin-left: 2px">${formatterXAxis(this.locale, this.timespan, parseInt(data[0].axisValue, 10))}</b><br>`;
 
-          for (const pool of data.reverse()) {
-            tooltip += `${pool.marker} ${pool.seriesName}: ${pool.data[1]} sats/vByte<br>`;
+          for (const rate of data.reverse()) {
+            tooltip += `${rate.marker} ${rate.seriesName}: ${rate.data[1]} sats/vByte<br>`;
           }
 
           if (['24h', '3d'].includes(this.timespan)) {
-            tooltip += `<small>At block: ${data[0].data[2]}</small>`;
+            tooltip += `<small>` + $localize`At block: ${data[0].data[2]}` + `</small>`;
           } else {
-            tooltip += `<small>Around block ${data[0].data[2]}</small>`;
+            tooltip += `<small>` + $localize`Around block: ${data[0].data[2]}` + `</small>`;
           }
 
           return tooltip;
@@ -209,6 +213,7 @@ export class BlockFeeRatesGraphComponent implements OnInit {
         },
       },
       legend: (data.series.length === 0) ? undefined : {
+        padding: [10, 75],
         data: data.legends,
         selected: JSON.parse(this.storageService.getValue('fee_rates_legend')) ?? {
           'Min': true,

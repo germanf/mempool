@@ -1,6 +1,6 @@
 import { Component, ChangeDetectionStrategy, OnChanges, Input } from '@angular/core';
-import { calcSegwitFeeGains } from 'src/app/bitcoin.utils';
-import { Transaction } from 'src/app/interfaces/electrs.interface';
+import { calcSegwitFeeGains } from '../../bitcoin.utils';
+import { Transaction } from '../../interfaces/electrs.interface';
 
 @Component({
   selector: 'app-tx-features',
@@ -12,9 +12,11 @@ export class TxFeaturesComponent implements OnChanges {
   @Input() tx: Transaction;
 
   segwitGains = {
-    realizedGains: 0,
-    potentialBech32Gains: 0,
-    potentialP2shGains: 0,
+    realizedSegwitGains: 0,
+    potentialSegwitGains: 0,
+    potentialP2shSegwitGains: 0,
+    potentialTaprootGains: 0,
+    realizedTaprootGains: 0
   };
   isRbfTransaction: boolean;
   isTaproot: boolean;

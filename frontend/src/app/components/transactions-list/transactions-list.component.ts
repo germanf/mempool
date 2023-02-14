@@ -1,12 +1,14 @@
 import { Component, OnInit, Input, ChangeDetectionStrategy, OnChanges, Output, EventEmitter, ChangeDetectorRef } from '@angular/core';
 import { StateService } from '../../services/state.service';
-import { Observable, forkJoin, ReplaySubject, BehaviorSubject, merge, Subscription } from 'rxjs';
+import { CacheService } from '../../services/cache.service';
+import { Observable, ReplaySubject, BehaviorSubject, merge, Subscription } from 'rxjs';
 import { Outspend, Transaction, Vin, Vout } from '../../interfaces/electrs.interface';
 import { ElectrsApiService } from '../../services/electrs-api.service';
-import { environment } from 'src/environments/environment';
-import { AssetsService } from 'src/app/services/assets.service';
-import { map, switchMap } from 'rxjs/operators';
-import { BlockExtended } from 'src/app/interfaces/node-api.interface';
+import { environment } from '../../../environments/environment';
+import { AssetsService } from '../../services/assets.service';
+import { filter, map, tap, switchMap } from 'rxjs/operators';
+import { BlockExtended } from '../../interfaces/node-api.interface';
+import { ApiService } from '../../services/api.service';
 
 @Component({
   selector: 'app-transactions-list',
@@ -17,31 +19,40 @@ import { BlockExtended } from 'src/app/interfaces/node-api.interface';
 export class TransactionsListComponent implements OnInit, OnChanges {
   network = '';
   nativeAssetId = this.stateService.network === 'liquidtestnet' ? environment.nativeTestAssetId : environment.nativeAssetId;
+  showMoreIncrement = 1000;
 
   @Input() transactions: Transaction[];
   @Input() showConfirmations = false;
   @Input() transactionPage = false;
   @Input() errorUnblinded = false;
+  @Input() paginated = false;
+  @Input() inputIndex: number;
   @Input() outputIndex: number;
   @Input() address: string = '';
+  @Input() rowLimit = 12;
 
   @Output() loadMore = new EventEmitter();
 
   latestBlock$: Observable<BlockExtended>;
   outspendsSubscription: Subscription;
-  refreshOutspends$: ReplaySubject<object> = new ReplaySubject();
+  refreshOutspends$: ReplaySubject<string[]> = new ReplaySubject();
+  refreshChannels$: ReplaySubject<string[]> = new ReplaySubject();
   showDetails$ = new BehaviorSubject<boolean>(false);
-  outspends: Outspend[][] = [];
   assetsMinimal: any;
+  transactionsLength: number = 0;
+  inputRowLimit: number = 12;
+  outputRowLimit: number = 12;
 
   constructor(
     public stateService: StateService,
+    private cacheService: CacheService,
     private electrsApiService: ElectrsApiService,
+    private apiService: ApiService,
     private assetsService: AssetsService,
     private ref: ChangeDetectorRef,
   ) { }
 
-  ngOnInit() {
+  ngOnInit(): void {
     this.latestBlock$ = this.stateService.blocks$.pipe(map(([block]) => block));
     this.stateService.networkChanged$.subscribe((network) => this.network = network);
 
@@ -54,72 +65,103 @@ export class TransactionsListComponent implements OnInit, OnChanges {
     this.outspendsSubscription = merge(
       this.refreshOutspends$
         .pipe(
-          switchMap((observableObject) => forkJoin(observableObject)),
-          map((outspends: any) => {
-            const newOutspends: Outspend[] = [];
-            for (const i in outspends) {
-              if (outspends.hasOwnProperty(i)) {
-                newOutspends.push(outspends[i]);
-              }
+          switchMap((txIds) => this.apiService.getOutspendsBatched$(txIds)),
+          tap((outspends: Outspend[][]) => {
+            if (!this.transactions) {
+              return;
             }
-            this.outspends = this.outspends.concat(newOutspends);
+            const transactions = this.transactions.filter((tx) => !tx._outspends);
+            outspends.forEach((outspend, i) => {
+              transactions[i]._outspends = outspend;
+            });
           }),
         ),
       this.stateService.utxoSpent$
         .pipe(
-          map((utxoSpent) => {
+          tap((utxoSpent) => {
             for (const i in utxoSpent) {
-              this.outspends[0][i] = {
+              this.transactions[0]._outspends[i] = {
                 spent: true,
                 txid: utxoSpent[i].txid,
                 vin: utxoSpent[i].vin,
               };
             }
           }),
-        )
+        ),
+        this.refreshChannels$
+          .pipe(
+            filter(() => this.stateService.env.LIGHTNING),
+            switchMap((txIds) => this.apiService.getChannelByTxIds$(txIds)),
+            tap((channels) => {
+              if (!this.transactions) {
+                return;
+              }
+              const transactions = this.transactions.filter((tx) => !tx._channels);
+              channels.forEach((channel, i) => {
+                transactions[i]._channels = channel;
+              });
+            }),
+          )
+        ,
     ).subscribe(() => this.ref.markForCheck());
   }
 
-  ngOnChanges() {
-    if (!this.transactions || !this.transactions.length) {
-      return;
+  ngOnChanges(changes): void {
+    if (changes.inputIndex || changes.outputIndex || changes.rowLimit) {
+      this.inputRowLimit = Math.max(this.rowLimit, (this.inputIndex || 0) + 3);
+      this.outputRowLimit = Math.max(this.rowLimit, (this.outputIndex || 0) + 3);
+      if ((this.inputIndex || this.outputIndex) && !changes.transactions) {
+        setTimeout(() => {
+          const assetBoxElements = document.getElementsByClassName('assetBox');
+          if (assetBoxElements && assetBoxElements[0]) {
+            assetBoxElements[0].scrollIntoView({block: "center"});
+          }
+        }, 10);
+      }
     }
-    if (this.outputIndex) {
-      setTimeout(() => {
-        const assetBoxElements = document.getElementsByClassName('assetBox');
-        if (assetBoxElements && assetBoxElements[0]) {
-          assetBoxElements[0].scrollIntoView();
-        }
-      }, 10);
-    }
-    const observableObject = {};
-    this.transactions.forEach((tx, i) => {
-      tx['@voutLimit'] = true;
-      tx['@vinLimit'] = true;
-      if (this.outspends[i]) {
+    if (changes.transactions || changes.address) {
+      if (!this.transactions || !this.transactions.length) {
         return;
       }
 
-      if (this.address) {
-        const addressIn = tx.vout
-          .filter((v: Vout) => v.scriptpubkey_address === this.address)
-          .map((v: Vout) => v.value || 0)
-          .reduce((a: number, b: number) => a + b, 0);
+      this.transactionsLength = this.transactions.length;
+      this.cacheService.setTxCache(this.transactions);
 
-        const addressOut = tx.vin
-          .filter((v: Vin) => v.prevout && v.prevout.scriptpubkey_address === this.address)
-          .map((v: Vin) => v.prevout.value || 0)
-          .reduce((a: number, b: number) => a + b, 0);
+      this.transactions.forEach((tx) => {
+        tx['@voutLimit'] = true;
+        tx['@vinLimit'] = true;
+        if (tx['addressValue'] !== undefined) {
+          return;
+        }
 
-        tx['addressValue'] = addressIn - addressOut;
+        if (this.address) {
+          const addressIn = tx.vout
+            .filter((v: Vout) => v.scriptpubkey_address === this.address)
+            .map((v: Vout) => v.value || 0)
+            .reduce((a: number, b: number) => a + b, 0);
+
+          const addressOut = tx.vin
+            .filter((v: Vin) => v.prevout && v.prevout.scriptpubkey_address === this.address)
+            .map((v: Vin) => v.prevout.value || 0)
+            .reduce((a: number, b: number) => a + b, 0);
+
+          tx['addressValue'] = addressIn - addressOut;
+        }
+      });
+      const txIds = this.transactions.filter((tx) => !tx._outspends).map((tx) => tx.txid);
+      if (txIds.length) {
+        this.refreshOutspends$.next(txIds);
       }
-
-      observableObject[i] = this.electrsApiService.getOutspends$(tx.txid);
-    });
-    this.refreshOutspends$.next(observableObject);
+      if (this.stateService.env.LIGHTNING) {
+        const txIds = this.transactions.filter((tx) => !tx._channels).map((tx) => tx.txid);
+        if (txIds.length) {
+          this.refreshChannels$.next(txIds);
+        }
+      }
+    }
   }
 
-  onScroll() {
+  onScroll(): void {
     const scrollHeight = document.body.scrollHeight;
     const scrollTop = document.documentElement.scrollTop;
     if (scrollHeight > 0){
@@ -134,11 +176,11 @@ export class TransactionsListComponent implements OnInit, OnChanges {
     return tx.vout.some((v: any) => v.value === undefined);
   }
 
-  getTotalTxOutput(tx: Transaction) {
+  getTotalTxOutput(tx: Transaction): number {
     return tx.vout.map((v: Vout) => v.value || 0).reduce((a: number, b: number) => a + b);
   }
 
-  switchCurrency() {
+  switchCurrency(): void {
     if (this.network === 'liquid' || this.network === 'liquidtestnet') {
       return;
     }
@@ -150,7 +192,7 @@ export class TransactionsListComponent implements OnInit, OnChanges {
     return tx.txid + tx.status.confirmed;
   }
 
-  trackByIndexFn(index: number) {
+  trackByIndexFn(index: number): number {
     return index;
   }
 
@@ -163,7 +205,7 @@ export class TransactionsListComponent implements OnInit, OnChanges {
     return Math.pow(base, exponent);
   }
 
-  toggleDetails() {
+  toggleDetails(): void {
     if (this.showDetails$.value === true) {
       this.showDetails$.next(false);
     } else {
@@ -171,7 +213,54 @@ export class TransactionsListComponent implements OnInit, OnChanges {
     }
   }
 
-  ngOnDestroy() {
+  loadMoreInputs(tx: Transaction): void {
+    if (!tx['@vinLoaded']) {
+      this.electrsApiService.getTransaction$(tx.txid)
+        .subscribe((newTx) => {
+          tx['@vinLoaded'] = true;
+          tx.vin = newTx.vin;
+          tx.fee = newTx.fee;
+          this.ref.markForCheck();
+        });
+    }
+  }
+
+  showMoreInputs(tx: Transaction): void {
+    this.loadMoreInputs(tx);
+    tx['@vinLimit'] = this.getVinLimit(tx, true);
+  }
+
+  showMoreOutputs(tx: Transaction): void {
+    tx['@voutLimit'] = this.getVoutLimit(tx, true);
+  }
+
+  getVinLimit(tx: Transaction, next = false): number {
+    let limit;
+    if ((tx['@vinLimit'] || 0) > this.inputRowLimit) {
+      limit = Math.min(tx['@vinLimit'] + (next ? this.showMoreIncrement : 0), tx.vin.length);
+    } else {
+      limit = Math.min((next ? this.showMoreIncrement : this.inputRowLimit), tx.vin.length);
+    }
+    if (tx.vin.length - limit <= 5) {
+      limit = tx.vin.length;
+    }
+    return limit;
+  }
+
+  getVoutLimit(tx: Transaction, next = false): number {
+    let limit;
+    if ((tx['@voutLimit'] || 0) > this.outputRowLimit) {
+      limit = Math.min(tx['@voutLimit'] + (next ? this.showMoreIncrement : 0), tx.vout.length);
+    } else {
+      limit = Math.min((next ? this.showMoreIncrement : this.outputRowLimit), tx.vout.length);
+    }
+    if (tx.vout.length - limit <= 5) {
+      limit = tx.vout.length;
+    }
+    return limit;
+  }
+
+  ngOnDestroy(): void {
     this.outspendsSubscription.unsubscribe();
   }
 }

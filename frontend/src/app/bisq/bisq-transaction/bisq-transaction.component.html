@@ -6,12 +6,12 @@
         <h1 i18n="shared.transaction">Transaction</h1>
       </div>
 
-      <span class="tx-link float-left">
-        <a [routerLink]="['/tx' | relativeUrl, bisqTx.id]">
-          <span class="d-inline d-lg-none">{{ bisqTx.id | shortenString : 24 }}</span>
-          <span class="d-none d-lg-inline">{{ bisqTx.id }}</span>
-        </a>
-        <app-clipboard [text]="bisqTx.id"></app-clipboard>
+      <span class="tx-link">
+        <span class="txid">
+          <app-truncate [text]="bisqTx.id" [lastChars]="12" [link]="['/tx/' | relativeUrl, bisqTx.id]">
+            <app-clipboard [text]="bisqTx.id"></app-clipboard>
+          </app-truncate>
+        </span>
       </span>
       <span class="grow"></span>
       <div class="container-buttons">
@@ -31,7 +31,7 @@
             <table class="table table-borderless table-striped">
               <tbody>
                 <tr>
-                  <td i18n="transaction.timestamp|Transaction Timestamp">Timestamp</td>
+                  <td i18n="block.timestamp">Timestamp</td>
                   <td>
                     &lrm;{{ bisqTx.time | date:'yyyy-MM-dd HH:mm' }}
                     <div class="lg-inline">

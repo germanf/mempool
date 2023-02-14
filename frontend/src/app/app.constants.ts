@@ -79,7 +79,7 @@ export const poolsColor = {
    'binancepool': '#1E88E5',
    'viabtc': '#039BE5',
    'btccom': '#00897B',
-   'slushpool': '#00ACC1',
+   'braiinspool': '#00ACC1',
    'sbicrypto': '#43A047',
    'marapool': '#7CB342',
    'luxor': '#C0CA33',
@@ -116,11 +116,12 @@ export const languages: Language[] = [
 // { code: 'hr', name: 'Hrvatski' },        // Croatian
 // { code: 'id', name: 'Bahasa Indonesia' },// Indonesian
    { code: 'hi', name: 'हिन्दी' },             // Hindi
+   { code: 'ne', name: 'नेपाली' },            // Nepalese
    { code: 'it', name: 'Italiano' },        // Italian
    { code: 'he', name: 'עברית' },           // Hebrew
    { code: 'ka', name: 'ქართული' },         // Georgian
 // { code: 'lv', name: 'Latviešu' },        // Latvian
-// { code: 'lt', name: 'Lietuvių' },        // Lithuanian
+   { code: 'lt', name: 'Lietuvių' },        // Lithuanian
    { code: 'hu', name: 'Magyar' },          // Hungarian
    { code: 'mk', name: 'Македонски' },      // Macedonian
 // { code: 'ms', name: 'Bahasa Melayu' },   // Malay

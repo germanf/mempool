@@ -1,7 +1,7 @@
 import config from './config';
 import { createPool, Pool, PoolConnection } from 'mysql2/promise';
 import logger from './logger';
-import { PoolOptions } from 'mysql2/typings/mysql';
+import { FieldPacket, OkPacket, PoolOptions, ResultSetHeader, RowDataPacket } from 'mysql2/typings/mysql';
 
  class DB {
   constructor() {
@@ -22,12 +22,22 @@ import { PoolOptions } from 'mysql2/typings/mysql';
     timezone: '+00:00',
   };
 
-  public async query(query, params?) {
+  private checkDBFlag() {
+    if (config.DATABASE.ENABLED === false) {
+      logger.err('Trying to use DB feature but config.DATABASE.ENABLED is set to false, please open an issue');
+    }
+  }
+
+  public async query<T extends RowDataPacket[][] | RowDataPacket[] | OkPacket |
+    OkPacket[] | ResultSetHeader>(query, params?): Promise<[T, FieldPacket[]]>
+  {
+    this.checkDBFlag();
     const pool = await this.getPool();
     return pool.query(query, params);
   }
 
   public async checkDbConnection() {
+    this.checkDBFlag();
     try {
       await this.query('SELECT ?', [1]);
       logger.info('Database connection established.');

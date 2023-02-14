@@ -25,14 +25,16 @@ export namespace IEsploraApi {
     is_coinbase: boolean;
     scriptsig: string;
     scriptsig_asm: string;
-    inner_redeemscript_asm?: string;
-    inner_witnessscript_asm?: string;
+    inner_redeemscript_asm: string;
+    inner_witnessscript_asm: string;
     sequence: any;
-    witness?: string[];
+    witness: string[];
     prevout: Vout | null;
     // Elements
     is_pegin?: boolean;
     issuance?: Issuance;
+    // Custom
+    lazy?: boolean;
   }
 
   interface Issuance {

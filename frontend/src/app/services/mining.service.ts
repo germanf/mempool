@@ -57,7 +57,7 @@ export class MiningService {
 
     // I think it's fine to hardcode this since we don't have x1000 hashrate jump everyday
     // If we want to support the mining dashboard for testnet, we can hardcode it too
-    let selectedPower = 15;
+    let selectedPower = 18;
     if (this.stateService.network === 'testnet') {
       selectedPower = 12;
     }
@@ -96,7 +96,7 @@ export class MiningService {
         share: parseFloat((poolStat.blockCount / stats.blockCount * 100).toFixed(2)),
         lastEstimatedHashrate: (poolStat.blockCount / stats.blockCount * stats.lastEstimatedHashrate / hashrateDivider).toFixed(2),
         emptyBlockRatio: (poolStat.emptyBlocks / poolStat.blockCount * 100).toFixed(2),
-        logo: `./resources/mining-pools/` + poolStat.name.toLowerCase().replace(' ', '').replace('.', '') + '.svg',
+        logo: `/resources/mining-pools/` + poolStat.name.toLowerCase().replace(' ', '').replace('.', '') + '.svg',
         ...poolStat
       };
     });

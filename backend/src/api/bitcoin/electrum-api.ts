@@ -1,12 +1,11 @@
 import config from '../../config';
+import Client from '@mempool/electrum-client';
 import { AbstractBitcoinApi } from './bitcoin-api-abstract-factory';
 import { IEsploraApi } from './esplora-api.interface';
 import { IElectrumApi } from './electrum-api.interface';
 import BitcoinApi from './bitcoin-api';
 import logger from '../../logger';
-import * as ElectrumClient from '@mempool/electrum-client';
-import * as sha256 from 'crypto-js/sha256';
-import * as hexEnc from 'crypto-js/enc-hex';
+import crypto from "crypto-js";
 import loadingIndicators from '../loading-indicators';
 import memoryCache from '../memory-cache';
 
@@ -26,7 +25,7 @@ class BitcoindElectrsApi extends BitcoinApi implements AbstractBitcoinApi {
       onLog: (str) => { logger.debug(str); },
     };
 
-    this.electrumClient = new ElectrumClient(
+    this.electrumClient = new Client(
       config.ELECTRUM.PORT,
       config.ELECTRUM.HOST,
       config.ELECTRUM.TLS_ENABLED ? 'tls' : 'tcp',
@@ -35,7 +34,7 @@ class BitcoindElectrsApi extends BitcoinApi implements AbstractBitcoinApi {
     );
 
     this.electrumClient.initElectrum(electrumConfig, electrumPersistencePolicy)
-      .then(() => {})
+      .then(() => { })
       .catch((err) => {
         logger.err(`Error connecting to Electrum Server at ${config.ELECTRUM.HOST}:${config.ELECTRUM.PORT}`);
       });
@@ -95,7 +94,7 @@ class BitcoindElectrsApi extends BitcoinApi implements AbstractBitcoinApi {
   async $getAddressTransactions(address: string, lastSeenTxId: string): Promise<IEsploraApi.Transaction[]> {
     const addressInfo = await this.bitcoindClient.validateAddress(address);
     if (!addressInfo || !addressInfo.isvalid) {
-     return [];
+      return [];
     }
 
     try {
@@ -144,8 +143,8 @@ class BitcoindElectrsApi extends BitcoinApi implements AbstractBitcoinApi {
   }
 
   private encodeScriptHash(scriptPubKey: string): string {
-    const addrScripthash = hexEnc.stringify(sha256(hexEnc.parse(scriptPubKey)));
-    return addrScripthash.match(/.{2}/g).reverse().join('');
+    const addrScripthash = crypto.enc.Hex.stringify(crypto.SHA256(crypto.enc.Hex.parse(scriptPubKey)));
+    return addrScripthash!.match(/.{2}/g)!.reverse().join('');
   }
 
 }

@@ -1,4 +1,5 @@
 import { IEsploraApi } from './api/bitcoin/esplora-api.interface';
+import { HeapNode } from "./utils/pairing-heap";
 
 export interface PoolTag {
   id: number; // mysql row id
@@ -22,6 +23,21 @@ export interface PoolStats extends PoolInfo {
   emptyBlocks: number;
 }
 
+export interface BlockAudit {
+  time: number,
+  height: number,
+  hash: string,
+  missingTxs: string[],
+  freshTxs: string[],
+  addedTxs: string[],
+  matchRate: number,
+}
+
+export interface AuditScore {
+  hash: string,
+  matchRate?: number,
+}
+
 export interface MempoolBlock {
   blockSize: number;
   blockVSize: number;
@@ -33,6 +49,12 @@ export interface MempoolBlock {
 
 export interface MempoolBlockWithTransactions extends MempoolBlock {
   transactionIds: string[];
+  transactions: TransactionStripped[];
+}
+
+export interface MempoolBlockDelta {
+  added: TransactionStripped[];
+  removed: string[];
 }
 
 interface VinStrippedToScriptsig {
@@ -50,15 +72,55 @@ export interface TransactionExtended extends IEsploraApi.Transaction {
   firstSeen?: number;
   effectiveFeePerVsize: number;
   ancestors?: Ancestor[];
+  descendants?: Ancestor[];
   bestDescendant?: BestDescendant | null;
   cpfpChecked?: boolean;
   deleteAfter?: number;
 }
 
-interface Ancestor {
+export interface AuditTransaction {
+  txid: string;
+  fee: number;
+  weight: number;
+  feePerVsize: number;
+  effectiveFeePerVsize: number;
+  vin: string[];
+  relativesSet: boolean;
+  ancestorMap: Map<string, AuditTransaction>;
+  children: Set<AuditTransaction>;
+  ancestorFee: number;
+  ancestorWeight: number;
+  score: number;
+  used: boolean;
+  modified: boolean;
+  modifiedNode: HeapNode<AuditTransaction>;
+}
+
+export interface ThreadTransaction {
+  txid: string;
+  fee: number;
+  weight: number;
+  feePerVsize: number;
+  effectiveFeePerVsize?: number;
+  vin: string[];
+  cpfpRoot?: string;
+  cpfpChecked?: boolean;
+}
+
+export interface Ancestor {
   txid: string;
   weight: number;
   fee: number;
+}
+
+export interface TransactionSet {
+  fee: number;
+  weight: number;
+  score: number;
+  children?: Set<string>;
+  available?: boolean;
+  modified?: boolean;
+  modifiedNode?: HeapNode<string>;
 }
 
 interface BestDescendant {
@@ -69,7 +131,9 @@ interface BestDescendant {
 
 export interface CpfpInfo {
   ancestors: Ancestor[];
-  bestDescendant: BestDescendant | null;
+  bestDescendant?: BestDescendant | null;
+  descendants?: Ancestor[];
+  effectiveFeePerVsize?: number;
 }
 
 export interface TransactionStripped {
@@ -81,7 +145,7 @@ export interface TransactionStripped {
 
 export interface BlockExtension {
   totalFees?: number;
-  medianFee?: number; // Actually the median fee rate that we compute ourself
+  medianFee?: number;
   feeRange?: number[];
   reward?: number;
   coinbaseTx?: TransactionMinerInfo;
@@ -94,10 +158,21 @@ export interface BlockExtension {
   avgFee?: number;
   avgFeeRate?: number;
   coinbaseRaw?: string;
+  usd?: number | null;
 }
 
 export interface BlockExtended extends IEsploraApi.Block {
   extras: BlockExtension;
+}
+
+export interface BlockSummary {
+  id: string;
+  transactions: TransactionStripped[];
+}
+
+export interface BlockPrice {
+  height: number;
+  priceId: number;
 }
 
 export interface TransactionMinerInfo {
@@ -199,6 +274,7 @@ export interface IBackendInfo {
   hostname: string;
   gitCommit: string;
   version: string;
+  lightning: boolean;
 }
 
 export interface IDifficultyAdjustment {
@@ -213,8 +289,53 @@ export interface IDifficultyAdjustment {
   timeOffset: number;
 }
 
+export interface IndexedDifficultyAdjustment {
+  time: number; // UNIX timestamp
+  height: number; // Block height
+  difficulty: number;
+  adjustment: number;
+}
+
 export interface RewardStats {
   totalReward: number;
   totalFee: number;
   totalTx: number;
+}
+
+export interface ITopNodesPerChannels {
+  publicKey: string,
+  alias: string,
+  channels?: number,
+  capacity: number,
+  firstSeen?: number,
+  updatedAt?: number,
+  city?: any,
+  country?: any,
+}
+
+export interface ITopNodesPerCapacity {
+  publicKey: string,
+  alias: string,
+  capacity: number,
+  channels?: number,
+  firstSeen?: number,
+  updatedAt?: number,
+  city?: any,
+  country?: any,
+}
+
+export interface INodesRanking {
+  topByCapacity: ITopNodesPerCapacity[];
+  topByChannels: ITopNodesPerChannels[];
+}
+
+export interface IOldestNodes {
+  publicKey: string,
+  alias: string,
+  firstSeen: number,
+  channels?: number,
+  capacity: number,
+  updatedAt?: number,
+  city?: any,
+  country?: any,
 }

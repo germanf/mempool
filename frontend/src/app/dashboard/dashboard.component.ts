@@ -33,7 +33,6 @@ interface MempoolStatsData {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class DashboardComponent implements OnInit {
-  collapseLevel: string;
   featuredAssets$: Observable<any>;
   network$: Observable<string>;
   mempoolBlocksData$: Observable<MempoolBlocksData>;
@@ -63,7 +62,6 @@ export class DashboardComponent implements OnInit {
     this.seoService.resetTitle();
     this.websocketService.want(['blocks', 'stats', 'mempool-blocks', 'live-2h-chart']);
     this.network$ = merge(of(''), this.stateService.networkChanged$);
-    this.collapseLevel = this.storageService.getValue('dashboard-collapsed') || 'one';
     this.mempoolLoadingStatus$ = this.stateService.loadingIndicators$
       .pipe(
         map((indicators) => indicators.mempool !== undefined ? indicators.mempool : 100)
@@ -153,7 +151,7 @@ export class DashboardComponent implements OnInit {
           if (this.stateService.env.MINING_DASHBOARD === true) {
             for (const block of acc) {
               // @ts-ignore: Need to add an extra field for the template
-              block.extras.pool.logo = `./resources/mining-pools/` +
+              block.extras.pool.logo = `/resources/mining-pools/` +
                 block.extras.pool.name.toLowerCase().replace(' ', '').replace('.', '') + '.svg';
             }
           }
@@ -229,16 +227,5 @@ export class DashboardComponent implements OnInit {
 
   trackByBlock(index: number, block: BlockExtended) {
     return block.height;
-  }
-
-  toggleCollapsed() {
-    if (this.collapseLevel === 'one') {
-      this.collapseLevel = 'two';
-    } else if (this.collapseLevel === 'two') {
-      this.collapseLevel = 'three';
-    } else {
-      this.collapseLevel = 'one';
-    }
-    this.storageService.setValue('dashboard-collapsed', this.collapseLevel);
   }
 }

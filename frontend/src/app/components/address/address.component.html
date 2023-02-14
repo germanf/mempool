@@ -2,11 +2,9 @@
   <div class="title-address">
     <h1 i18n="shared.address">Address</h1>
     <div class="tx-link">
-      <a [routerLink]="['/address/' | relativeUrl, addressString]" >
-        <span class="d-inline d-lg-none">{{ addressString | shortenString : 18 }}</span>
-        <span class="d-none d-lg-inline">{{ addressString }}</span>
-      </a>
-      <app-clipboard [text]="addressString"></app-clipboard>
+      <app-truncate [text]="addressString" [lastChars]="8" [link]="['/address/' | relativeUrl, addressString]">
+        <app-clipboard [text]="addressString"></app-clipboard>
+      </app-truncate>
     </div>
   </div>
 
@@ -21,10 +19,11 @@
             <tbody>
               <tr *ngIf="addressInfo && addressInfo.unconfidential">
                 <td i18n="address.unconfidential">Unconfidential</td>
-                <td><a [routerLink]="['/address/' | relativeUrl, addressInfo.unconfidential]">
-                  <span class="d-inline d-lg-none">{{ addressInfo.unconfidential | shortenString : 14 }}</span>
-                  <span class="d-none d-lg-inline">{{ addressInfo.unconfidential }}</span>
-                </a> <app-clipboard [text]="addressInfo.unconfidential"></app-clipboard></td>
+                <td>
+                  <app-truncate [text]="addressInfo.unconfidential" [lastChars]="8" [link]="['/address/' | relativeUrl, addressInfo.unconfidential]">
+                    <app-clipboard [text]="addressInfo.unconfidential"></app-clipboard>
+                  </app-truncate>
+                </td>
               </tr>
               <ng-template [ngIf]="!address.electrum">
                 <tr>
@@ -66,9 +65,14 @@
 
     <div class="text-center">
       <ng-template [ngIf]="isLoadingTransactions">
-        <div class="header-bg box" style="padding: 10px; margin-bottom: 10px;">
-          <span class="skeleton-loader"></span>
-        </div>
+
+        <ng-container *ngIf="addressLoadingStatus$ as addressLoadingStatus">
+          <div class="header-bg box" style="padding: 12px; margin-bottom: 10px;">
+            <div class="progress progress-dark">
+              <div class="progress-bar progress-light" role="progressbar" [ngStyle]="{'width': addressLoadingStatus + '%' }"></div>
+            </div>
+          </div>
+        </ng-container>
 
         <div class="header-bg box">
           <div class="row" style="height: 107px;">
@@ -80,13 +84,6 @@
             </div>
           </div>
         </div>
-
-        <ng-container *ngIf="addressLoadingStatus$ | async as addressLoadingStatus">
-          <br>
-          <div class="progress progress-dark">
-            <div class="progress-bar progress-darklight" role="progressbar" [ngStyle]="{'width': addressLoadingStatus + '%' }"></div>
-          </div>
-        </ng-container>
 
       </ng-template>
 
@@ -132,7 +129,7 @@
       <span i18n="address.error.loading-address-data">Error loading address data.</span>
       <br>
       <ng-template #displayServerError><i class="small">({{ error.error }})</i></ng-template>
-      <ng-template [ngIf]="error.status === 413 || error.status === 405" [ngIfElse]="displayServerError">
+      <ng-template [ngIf]="error.status === 413 || error.status === 405 || error.status === 504" [ngIfElse]="displayServerError">
         <ng-container i18n="Electrum server limit exceeded error">
           <i>There many transactions on this address, more than your backend can handle. See more on <a href="/docs/faq#address-lookup-issues">setting up a stronger backend</a>.</i>
           <br><br>
@@ -154,4 +151,10 @@
 
 <ng-template #confidentialTd>
   <td i18n="shared.confidential">Confidential</td>
+</ng-template>
+
+<ng-template #headerLoader>
+  <div class="header-bg box" style="padding: 10px; margin-bottom: 10px;">
+    <span class="skeleton-loader"></span>
+  </div>
 </ng-template>

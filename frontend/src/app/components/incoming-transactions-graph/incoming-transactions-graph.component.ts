@@ -1,8 +1,8 @@
 import { Component, Input, Inject, LOCALE_ID, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { EChartsOption } from 'echarts';
 import { OnChanges } from '@angular/core';
-import { StorageService } from 'src/app/services/storage.service';
-import { download, formatterXAxis, formatterXAxisLabel } from 'src/app/shared/graphs.utils';
+import { StorageService } from '../../services/storage.service';
+import { download, formatterXAxis, formatterXAxisLabel } from '../../shared/graphs.utils';
 import { formatNumber } from '@angular/common';
 
 @Component({
@@ -127,7 +127,7 @@ export class IncomingTransactionsGraphComponent implements OnInit, OnChanges {
       },
       xAxis: [
         {
-          name: formatterXAxisLabel(this.locale, this.windowPreference),
+          name: this.template === 'widget' ? '' : formatterXAxisLabel(this.locale, this.windowPreference),
           nameLocation: 'middle',
           nameTextStyle: {
             padding: [20, 0, 0, 0],

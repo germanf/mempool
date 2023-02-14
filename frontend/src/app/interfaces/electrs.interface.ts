@@ -1,3 +1,5 @@
+import { IChannel } from './node-api.interface';
+
 export interface Transaction {
   txid: string;
   version: number;
@@ -19,6 +21,13 @@ export interface Transaction {
   deleteAfter?: number;
   _unblinded?: any;
   _deduced?: boolean;
+  _outspends?: Outspend[];
+  _channels?: TransactionChannels;
+}
+
+export interface TransactionChannels {
+  inputs: { [vin: number]: IChannel };
+  outputs: { [vout: number]: IChannel };
 }
 
 interface Ancestor {
@@ -54,6 +63,8 @@ export interface Vin {
   // Elements
   is_pegin?: boolean;
   issuance?: Issuance;
+  // Custom
+  lazy?: boolean;
 }
 
 interface Issuance {

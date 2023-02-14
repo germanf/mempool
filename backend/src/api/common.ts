@@ -1,5 +1,7 @@
 import { CpfpInfo, TransactionExtended, TransactionStripped } from '../mempool.interfaces';
 import config from '../config';
+import { NodeSocket } from '../repositories/NodesSocketsRepository';
+import { isIP } from 'net';
 export class Common {
   static nativeAssetId = config.MEMPOOL.NETWORK === 'liquidtestnet' ?
     '144c654344aa716d6f3abcc1ca90e5641e4e2a7f633bc09fe3baf64585819a49'
@@ -33,24 +35,31 @@ export class Common {
   }
 
   static getFeesInRange(transactions: TransactionExtended[], rangeLength: number) {
-    const arr = [transactions[transactions.length - 1].effectiveFeePerVsize];
+    const filtered: TransactionExtended[] = [];
+    let lastValidRate = Infinity;
+    // filter out anomalous fee rates to ensure monotonic range
+    for (const tx of transactions) {
+      if (tx.effectiveFeePerVsize <= lastValidRate) {
+        filtered.push(tx);
+        lastValidRate = tx.effectiveFeePerVsize;
+      }
+    }
+    const arr = [filtered[filtered.length - 1].effectiveFeePerVsize];
     const chunk = 1 / (rangeLength - 1);
     let itemsToAdd = rangeLength - 2;
 
     while (itemsToAdd > 0) {
-      arr.push(transactions[Math.floor(transactions.length * chunk * itemsToAdd)].effectiveFeePerVsize);
+      arr.push(filtered[Math.floor(filtered.length * chunk * itemsToAdd)].effectiveFeePerVsize);
       itemsToAdd--;
     }
 
-    arr.push(transactions[0].effectiveFeePerVsize);
+    arr.push(filtered[0].effectiveFeePerVsize);
     return arr;
   }
 
   static findRbfTransactions(added: TransactionExtended[], deleted: TransactionExtended[]): { [txid: string]: TransactionExtended } {
     const matches: { [txid: string]: TransactionExtended } = {};
     deleted
-      // The replaced tx must have at least one input with nSequence < maxint-1 (That’s the opt-in)
-      .filter((tx) => tx.vin.some((vin) => vin.sequence < 0xfffffffe))
       .forEach((deletedTx) => {
         const foundMatches = added.find((addedTx) => {
           // The new tx must, absolutely speaking, pay at least as much fee as the replaced tx.
@@ -59,7 +68,7 @@ export class Common {
             && addedTx.feePerVsize > deletedTx.feePerVsize
             // Spends one or more of the same inputs
             && deletedTx.vin.some((deletedVin) =>
-              addedTx.vin.some((vin) => vin.txid === deletedVin.txid));
+              addedTx.vin.some((vin) => vin.txid === deletedVin.txid && vin.vout === deletedVin.vout));
             });
         if (foundMatches) {
           matches[deletedTx.txid] = foundMatches;
@@ -114,7 +123,7 @@ export class Common {
       totalFees += tx.bestDescendant.fee;
     }
 
-    tx.effectiveFeePerVsize = Math.max(Common.isLiquid() ? 0.1 : 1, totalFees / (totalWeight / 4));
+    tx.effectiveFeePerVsize = Math.max(0, totalFees / (totalWeight / 4));
     tx.cpfpChecked = true;
 
     return {
@@ -169,12 +178,139 @@ export class Common {
       default: return null;
     }
   }
-  
+
   static indexingEnabled(): boolean {
     return (
       ['mainnet', 'testnet', 'signet'].includes(config.MEMPOOL.NETWORK) &&
       config.DATABASE.ENABLED === true &&
-      config.MEMPOOL.INDEXING_BLOCKS_AMOUNT != 0
+      config.MEMPOOL.INDEXING_BLOCKS_AMOUNT !== 0
     );
+  }
+
+  static blocksSummariesIndexingEnabled(): boolean {
+    return (
+      Common.indexingEnabled() &&
+      config.MEMPOOL.BLOCKS_SUMMARIES_INDEXING === true
+    );
+  }
+
+  static cpfpIndexingEnabled(): boolean {
+    return (
+      Common.indexingEnabled() &&
+      config.MEMPOOL.CPFP_INDEXING === true
+    );
+  }
+
+  static setDateMidnight(date: Date): void {
+    date.setUTCHours(0);
+    date.setUTCMinutes(0);
+    date.setUTCSeconds(0);
+    date.setUTCMilliseconds(0);
+  }
+
+  static channelShortIdToIntegerId(channelId: string): string {
+    if (channelId.indexOf('x') === -1) { // Already an integer id
+      return channelId;
+    }
+    if (channelId.indexOf('/') !== -1) { // Topology import
+      channelId = channelId.slice(0, -2);
+    }
+    const s = channelId.split('x').map(part => BigInt(part));
+    return ((s[0] << 40n) | (s[1] << 16n) | s[2]).toString();
+  }
+
+  /** Decodes a channel id returned by lnd as uint64 to a short channel id */
+  static channelIntegerIdToShortId(id: string): string {
+    if (id.indexOf('/') !== -1) {
+      id = id.slice(0, -2);
+    }
+    
+    if (id.indexOf('x') !== -1) { // Already a short id
+      return id;
+    }
+
+    const n = BigInt(id);
+    return [
+      n >> 40n, // nth block
+      (n >> 16n) & 0xffffffn, // nth tx of the block
+      n & 0xffffn // nth output of the tx
+    ].join('x');
+  }
+
+  static utcDateToMysql(date?: number): string {
+    const d = new Date((date || 0) * 1000);
+    return d.toISOString().split('T')[0] + ' ' + d.toTimeString().split(' ')[0];
+  }
+
+  static findSocketNetwork(addr: string): {network: string | null, url: string} {
+    let network: string | null = null;
+    let url = addr.split('://')[1];
+
+    if (!url) {
+      return {
+        network: null,
+        url: addr,
+      };
+    }
+
+    if (addr.indexOf('onion') !== -1) {
+      if (url.split('.')[0].length >= 56) {
+        network = 'torv3';
+      } else {
+        network = 'torv2';
+      }
+    } else if (addr.indexOf('i2p') !== -1) {
+      network = 'i2p';
+    } else if (addr.indexOf('ipv4') !== -1) {
+      const ipv = isIP(url.split(':')[0]);
+      if (ipv === 4) {
+        network = 'ipv4';
+      } else {
+        return {
+          network: null,
+          url: addr,
+        };
+      }
+    } else if (addr.indexOf('ipv6') !== -1) {
+      url = url.split('[')[1].split(']')[0];
+      const ipv = isIP(url);
+      if (ipv === 6) {
+        const parts = addr.split(':');
+        network = 'ipv6';
+        url = `[${url}]:${parts[parts.length - 1]}`;
+      } else {
+        return {
+          network: null,
+          url: addr,
+        };
+      }
+    } else {
+      return {
+        network: null,
+        url: addr,
+      };
+    }
+
+    return {
+      network: network,
+      url: url,
+    };
+  }
+
+  static formatSocket(publicKey: string, socket: {network: string, addr: string}): NodeSocket {
+    if (config.LIGHTNING.BACKEND === 'cln') {
+      return {
+        publicKey: publicKey,
+        network: socket.network,
+        addr: socket.addr,
+      };
+    } else /* if (config.LIGHTNING.BACKEND === 'lnd') */ {
+      const formatted = this.findSocketNetwork(socket.addr);
+      return {
+        publicKey: publicKey,
+        network: formatted.network,
+        addr: formatted.url,
+      };
+    }
   }
 }

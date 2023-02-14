@@ -1,11 +1,11 @@
 import { Component, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
-import { StateService } from 'src/app/services/state.service';
+import { StateService } from '../../services/state.service';
 import { ActivatedRoute, ParamMap } from '@angular/router';
 import { switchMap, map, tap, filter } from 'rxjs/operators';
-import { MempoolBlock } from 'src/app/interfaces/websocket.interface';
+import { MempoolBlock, TransactionStripped } from '../../interfaces/websocket.interface';
 import { Observable, BehaviorSubject } from 'rxjs';
-import { SeoService } from 'src/app/services/seo.service';
-import { WebsocketService } from 'src/app/services/websocket.service';
+import { SeoService } from '../../services/seo.service';
+import { WebsocketService } from '../../services/websocket.service';
 
 @Component({
   selector: 'app-mempool-block',
@@ -18,13 +18,17 @@ export class MempoolBlockComponent implements OnInit, OnDestroy {
   mempoolBlockIndex: number;
   mempoolBlock$: Observable<MempoolBlock>;
   ordinal$: BehaviorSubject<string> = new BehaviorSubject('');
+  previewTx: TransactionStripped | void;
+  webGlEnabled: boolean;
 
   constructor(
     private route: ActivatedRoute,
     public stateService: StateService,
     private seoService: SeoService,
     private websocketService: WebsocketService,
-  ) { }
+  ) {
+    this.webGlEnabled = detectWebGL();
+  }
 
   ngOnInit(): void {
     this.websocketService.want(['blocks', 'mempool-blocks']);
@@ -68,11 +72,21 @@ export class MempoolBlockComponent implements OnInit, OnDestroy {
   getOrdinal(mempoolBlock: MempoolBlock): string {
     const blocksInBlock = Math.ceil(mempoolBlock.blockVSize / this.stateService.blockVSize);
     if (this.mempoolBlockIndex === 0) {
-      return $localize`:@@mempool-block.next.block:Next block`;
+      return $localize`:@@bdf0e930eb22431140a2eaeacd809cc5f8ebd38c:Next Block`;
     } else if (this.mempoolBlockIndex === this.stateService.env.KEEP_BLOCKS_AMOUNT - 1 && blocksInBlock > 1) {
       return $localize`:@@mempool-block.stack.of.blocks:Stack of ${blocksInBlock}:INTERPOLATION: mempool blocks`;
     } else {
       return $localize`:@@mempool-block.block.no:Mempool block ${this.mempoolBlockIndex + 1}:INTERPOLATION:`;
     }
- }
+  }
+
+  setTxPreview(event: TransactionStripped | void): void {
+    this.previewTx = event;
+  }
+}
+
+function detectWebGL() {
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  return (gl && gl instanceof WebGLRenderingContext);
 }

@@ -1,10 +1,14 @@
 import config from '../../config';
 import * as fs from 'fs';
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
+import * as http from 'http';
+import * as https from 'https';
+import { SocksProxyAgent } from 'socks-proxy-agent';
 import { BisqBlocks, BisqBlock, BisqTransaction, BisqStats, BisqTrade } from './interfaces';
 import { Common } from '../common';
 import { BlockExtended } from '../../mempool.interfaces';
 import { StaticPool } from 'node-worker-threads-pool';
+import backendInfo from '../backend-info';
 import logger from '../../logger';
 
 class Bisq {
@@ -35,7 +39,13 @@ class Bisq {
   constructor() {}
 
   startBisqService(): void {
-    this.checkForBisqDataFolder();
+    try {
+      this.checkForBisqDataFolder();
+    } catch (e) {
+      logger.info('Retrying to start bisq service in 3 minutes');
+      setTimeout(this.startBisqService.bind(this), 180000);
+      return;
+    }
     this.loadBisqDumpFile();
     setInterval(this.updatePrice.bind(this), 1000 * 60 * 60);
     this.updatePrice();
@@ -90,7 +100,7 @@ class Bisq {
   private checkForBisqDataFolder() {
     if (!fs.existsSync(Bisq.BLOCKS_JSON_FILE_PATH)) {
       logger.warn(Bisq.BLOCKS_JSON_FILE_PATH + ` doesn't exist. Make sure Bisq is running and the config is correct before starting the server.`);
-      return process.exit(1);
+      throw new Error(`Cannot load BISQ ${Bisq.BLOCKS_JSON_FILE_PATH} file`);
     }
   }
 
@@ -137,12 +147,59 @@ class Bisq {
       }, 2000);
     });
   }
+  private async updatePrice() {
+    type axiosOptions = {
+      headers: {
+        'User-Agent': string
+      };
+      timeout: number;
+      httpAgent?: http.Agent;
+      httpsAgent?: https.Agent;
+    }
+    const setDelay = (secs: number = 1): Promise<void> => new Promise(resolve => setTimeout(() => resolve(), secs * 1000));
+    const BISQ_URL = (config.SOCKS5PROXY.ENABLED === true) && (config.SOCKS5PROXY.USE_ONION === true) ? config.EXTERNAL_DATA_SERVER.BISQ_ONION : config.EXTERNAL_DATA_SERVER.BISQ_URL;
+    const isHTTP = (new URL(BISQ_URL).protocol.split(':')[0] === 'http') ? true : false;
+    const axiosOptions: axiosOptions = {
+      headers: {
+        'User-Agent': (config.MEMPOOL.USER_AGENT === 'mempool') ? `mempool/v${backendInfo.getBackendInfo().version}` : `${config.MEMPOOL.USER_AGENT}`
+      },
+      timeout: config.SOCKS5PROXY.ENABLED ? 30000 : 10000
+    };
+    let retry = 0;
 
-  private updatePrice() {
-    axios.get<BisqTrade[]>('https://bisq.markets/api/trades/?market=bsq_btc', { timeout: 10000 })
-      .then((response) => {
+    while(retry < config.MEMPOOL.EXTERNAL_MAX_RETRY) {
+      try {
+        if (config.SOCKS5PROXY.ENABLED) {
+          const socksOptions: any = {
+            agentOptions: {
+              keepAlive: true,
+            },
+            hostname: config.SOCKS5PROXY.HOST,
+            port: config.SOCKS5PROXY.PORT
+          };
+
+          if (config.SOCKS5PROXY.USERNAME && config.SOCKS5PROXY.PASSWORD) {
+            socksOptions.username = config.SOCKS5PROXY.USERNAME;
+            socksOptions.password = config.SOCKS5PROXY.PASSWORD;
+          } else {
+            // Retry with different tor circuits https://stackoverflow.com/a/64960234
+            socksOptions.username = `circuit${retry}`;
+          }
+
+          // Handle proxy agent for onion addresses
+          if (isHTTP) {
+            axiosOptions.httpAgent = new SocksProxyAgent(socksOptions);
+          } else {
+            axiosOptions.httpsAgent = new SocksProxyAgent(socksOptions);
+          }
+        }
+        
+        const data: AxiosResponse = await axios.get(`${BISQ_URL}/trades/?market=bsq_btc`, axiosOptions);
+        if (data.statusText === 'error' || !data.data) {
+          throw new Error(`Could not fetch data from Bisq market, Error: ${data.status}`);
+        }
         const prices: number[] = [];
-        response.data.forEach((trade) => {
+        data.data.forEach((trade) => {
           prices.push(parseFloat(trade.price) * 100000000);
         });
         prices.sort((a, b) => a - b);
@@ -150,9 +207,14 @@ class Bisq {
         if (this.priceUpdateCallbackFunction) {
           this.priceUpdateCallbackFunction(this.price);
         }
-    }).catch((err) => {
-      logger.err('Error updating Bisq market price: ' + err);
-    });
+        logger.debug('Successfully updated Bisq market price');
+        break;
+      } catch (e) {
+        logger.err('Error updating Bisq market price: '  + (e instanceof Error ? e.message : e));
+        await setDelay(config.MEMPOOL.EXTERNAL_RETRY_INTERVAL);
+        retry++;
+      }
+    }
   }
 
   private async loadBisqDumpFile(): Promise<void> {
@@ -162,7 +224,7 @@ class Bisq {
       this.buildIndex();
       this.calculateStats();
     } catch (e) {
-      logger.info('loadBisqDumpFile() error.' + (e instanceof Error ? e.message : e));
+      logger.info('Cannot load bisq dump file because: ' + (e instanceof Error ? e.message : e));
     }
   }
 

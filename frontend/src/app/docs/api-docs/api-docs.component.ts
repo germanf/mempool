@@ -1,17 +1,20 @@
-import { Component, OnInit, Input, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, Input, QueryList, AfterViewInit, ViewChildren } from '@angular/core';
 import { Env, StateService } from '../../services/state.service';
-import { Observable, merge, of } from 'rxjs';
-import { SeoService } from '../../services/seo.service';
-import { tap } from 'rxjs/operators';
+import { Observable, merge, of, Subject } from 'rxjs';
+import { tap, takeUntil } from 'rxjs/operators';
 import { ActivatedRoute } from "@angular/router";
 import { faqData, restApiDocsData, wsApiDocsData } from './api-docs-data';
+import { FaqTemplateDirective } from '../faq-template/faq-template.component';
 
 @Component({
   selector: 'app-api-docs',
   templateUrl: './api-docs.component.html',
   styleUrls: ['./api-docs.component.scss']
 })
-export class ApiDocsComponent implements OnInit {
+export class ApiDocsComponent implements OnInit, AfterViewInit {
+  private destroy$: Subject<any> = new Subject<any>();
+  plainHostname = document.location.hostname;
+  electrsPort = 0;
   hostname = document.location.hostname;
   network$: Observable<string>;
   active = 0;
@@ -24,28 +27,39 @@ export class ApiDocsComponent implements OnInit {
   restDocs: any[];
   wsDocs: any;
   screenWidth: number;
+  officialMempoolInstance: boolean;
+
+  @ViewChildren(FaqTemplateDirective) faqTemplates: QueryList<FaqTemplateDirective>;
+  dict = {};
 
   constructor(
     private stateService: StateService,
-    private seoService: SeoService,
     private route: ActivatedRoute,
   ) { }
+
+  ngAfterContentChecked() {
+    if (this.faqTemplates) {
+      this.faqTemplates.forEach((x) => this.dict[x.type] = x.template);
+    }
+    this.desktopDocsNavPosition = ( window.pageYOffset > 182 ) ? "fixed" : "relative";
+  }
 
   ngAfterViewInit() {
     const that = this;
     setTimeout( () => {
       if( this.route.snapshot.fragment ) {
         this.openEndpointContainer( this.route.snapshot.fragment );
+        if (document.getElementById( this.route.snapshot.fragment )) {
+          document.getElementById( this.route.snapshot.fragment ).scrollIntoView();
+        }
       }
-      window.addEventListener('scroll', function() {
-        that.desktopDocsNavPosition = ( window.pageYOffset > 182 ) ? "fixed" : "relative";
-      });
+      window.addEventListener('scroll', that.onDocScroll, { passive: true });
     }, 1 );
   }
 
   ngOnInit(): void {
     this.env = this.stateService.env;
-    this.seoService.setTitle($localize`:@@e351b40b3869a5c7d19c3d4918cb1ac7aaab95c4:API`);
+    this.officialMempoolInstance = this.env.OFFICIAL_MEMPOOL_SPACE;
     this.network$ = merge(of(''), this.stateService.networkChanged$).pipe(
       tap((network: string) => {
         if (this.env.BASE_MODULE === 'mempool' && network !== '') {
@@ -69,9 +83,33 @@ export class ApiDocsComponent implements OnInit {
     this.restDocs = restApiDocsData;
     this.wsDocs = wsApiDocsData;
 
-    this.network$.subscribe((network) => {
+    this.network$.pipe(takeUntil(this.destroy$)).subscribe((network) => {
       this.active = (network === 'liquid' || network === 'liquidtestnet') ? 2 : 0;
+      switch( network ) {
+        case "":
+          this.electrsPort = 50002; break;
+        case "mainnet":
+          this.electrsPort = 50002; break;
+        case "testnet":
+          this.electrsPort = 60002; break;
+        case "signet":
+          this.electrsPort = 60602; break;
+        case "liquid":
+          this.electrsPort = 51002; break;
+        case "liquidtestnet":
+          this.electrsPort = 51302; break;
+      }
     });
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next(true);
+    this.destroy$.complete();
+    window.removeEventListener('scroll', this.onDocScroll);
+  }
+
+  onDocScroll() {
+    this.desktopDocsNavPosition = ( window.pageYOffset > 182 ) ? "fixed" : "relative";
   }
 
   anchorLinkClick( event: any ) {
@@ -85,14 +123,17 @@ export class ApiDocsComponent implements OnInit {
       }
       targetId = element.hash.substring(1);
     }
-    if( this.route.snapshot.fragment === targetId ) {
+    if( this.route.snapshot.fragment === targetId && document.getElementById( targetId )) {
       document.getElementById( targetId ).scrollIntoView();
     }
     this.openEndpointContainer( targetId );
   }
 
   openEndpointContainer( targetId ) {
-    const tabHeaderHeight = document.getElementById( targetId + "-tab-header" ).scrollHeight;
+    let tabHeaderHeight = 0;
+    if (document.getElementById( targetId + "-tab-header" )) {
+      tabHeaderHeight = document.getElementById( targetId + "-tab-header" ).scrollHeight;
+    }
     if( ( window.innerWidth <= 992 ) && ( ( this.whichTab === 'rest' ) || ( this.whichTab === 'faq' ) ) && targetId ) {
       const endpointContainerEl = document.querySelector<HTMLElement>( "#" + targetId );
       const endpointContentEl = document.querySelector<HTMLElement>( "#" + targetId + " .endpoint-content" );

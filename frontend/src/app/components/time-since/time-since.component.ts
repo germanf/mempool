@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, Input, ChangeDetectorRef, OnChanges } from '@angular/core';
-import { StateService } from 'src/app/services/state.service';
-import { dates } from 'src/app/shared/i18n/dates';
+import { StateService } from '../../services/state.service';
+import { dates } from '../../shared/i18n/dates';
 
 @Component({
   selector: 'app-time-since',
@@ -13,6 +13,7 @@ export class TimeSinceComponent implements OnInit, OnChanges, OnDestroy {
   intervals = {};
 
   @Input() time: number;
+  @Input() dateString: number;
   @Input() fastRender = false;
 
   constructor(
@@ -52,7 +53,13 @@ export class TimeSinceComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   calculate() {
-    const seconds = Math.floor((+new Date() - +new Date(this.time * 1000)) / 1000);
+    let date: Date;
+    if (this.dateString) {
+      date = new Date(this.dateString)
+    } else {
+      date = new Date(this.time * 1000);
+    }
+    const seconds = Math.floor((+new Date() - +date) / 1000);
     if (seconds < 60) {
       return $localize`:@@date-base.just-now:Just now`;
     }

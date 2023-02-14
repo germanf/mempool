@@ -9,6 +9,9 @@
     "CLEAR_PROTECTION_MINUTES": 5,
     "POLL_RATE_MS": 1000,
     "INDEXING_BLOCKS_AMOUNT": -1,
+    "BLOCKS_SUMMARIES_INDEXING": true,
+    "ADVANCED_GBT_AUDIT": true,
+    "ADVANCED_GBT_MEMPOOL": false,
     "USE_SECOND_NODE_FOR_MINFEE": true
   },
   "SYSLOG" : {
@@ -31,8 +34,8 @@
     "ENABLED": true,
     "HOST": "127.0.0.1",
     "PORT": 3306,
-    "USERNAME": "mempool",
-    "PASSWORD": "mempool",
+    "USERNAME": "__MEMPOOL_MAINNET_USER__",
+    "PASSWORD": "__MEMPOOL_MAINNET_PASS__",
     "DATABASE": "mempool"
   },
   "STATISTICS": {

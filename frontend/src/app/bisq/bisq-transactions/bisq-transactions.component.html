@@ -3,7 +3,7 @@
 
   <div class="d-block float-right" id="filter">
     <form [formGroup]="radioGroupForm">
-      <ngx-bootrap-multiselect [options]="txTypeOptions" [settings]="txTypeDropdownSettings" [texts]="txTypeDropdownTexts" formControlName="txTypes"></ngx-bootrap-multiselect>
+      <ngx-bootstrap-multiselect [options]="txTypeOptions" [settings]="txTypeDropdownSettings" [texts]="txTypeDropdownTexts" formControlName="txTypes"></ngx-bootstrap-multiselect>
     </form>
   </div>
 
@@ -18,7 +18,7 @@
       <th style="width: 20%;" i18n>TXID</th>
       <th class="d-none d-md-block" style="width: 100%;" i18n>Type</th>
       <th style="width: 20%;" i18n>Amount</th>
-      <th style="width: 20%;" i18n>Confirmed</th>
+      <th style="width: 20%;" i18n="transaction.confirmed|Transaction Confirmed state">Confirmed</th>
       <th class="d-none d-md-block" i18n>Height</th>
     </thead>
     <tbody *ngIf="transactions.value; else loadingTmpl">

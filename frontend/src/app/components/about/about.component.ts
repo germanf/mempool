@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, Inject, LOCALE_ID, OnInit } from '@angular/core';
 import { WebsocketService } from '../../services/websocket.service';
-import { SeoService } from 'src/app/services/seo.service';
-import { StateService } from 'src/app/services/state.service';
+import { SeoService } from '../../services/seo.service';
+import { StateService } from '../../services/state.service';
 import { Observable } from 'rxjs';
-import { ApiService } from 'src/app/services/api.service';
-import { IBackendInfo } from 'src/app/interfaces/websocket.interface';
+import { ApiService } from '../../services/api.service';
+import { IBackendInfo } from '../../interfaces/websocket.interface';
 import { Router } from '@angular/router';
 import { map } from 'rxjs/operators';
-import { ITranslators } from 'src/app/interfaces/node-api.interface';
+import { ITranslators } from '../../interfaces/node-api.interface';
 
 @Component({
   selector: 'app-about',
@@ -61,9 +61,9 @@ export class AboutComponent implements OnInit {
     );
   }
 
-  sponsor() {
+  sponsor(): void {
     if (this.officialMempoolSpace && this.stateService.env.BASE_MODULE === 'mempool') {
-      this.router.navigateByUrl('/sponsor');
+      this.router.navigateByUrl('/enterprise');
     } else {
       this.showNavigateToSponsor = true;
     }

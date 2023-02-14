@@ -2,14 +2,14 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Inject, Input, L
 import { EChartsOption } from 'echarts';
 import { Observable } from 'rxjs';
 import { delay, map, retryWhen, share, startWith, switchMap, tap } from 'rxjs/operators';
-import { ApiService } from 'src/app/services/api.service';
-import { SeoService } from 'src/app/services/seo.service';
-import { FormBuilder, FormGroup } from '@angular/forms';
-import { poolsColor } from 'src/app/app.constants';
-import { StorageService } from 'src/app/services/storage.service';
-import { MiningService } from 'src/app/services/mining.service';
-import { download } from 'src/app/shared/graphs.utils';
-import { time } from 'console';
+import { ApiService } from '../../services/api.service';
+import { SeoService } from '../../services/seo.service';
+import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
+import { poolsColor } from '../../app.constants';
+import { StorageService } from '../../services/storage.service';
+import { MiningService } from '../../services/mining.service';
+import { download } from '../../shared/graphs.utils';
+import { ActivatedRoute } from '@angular/router';
 
 @Component({
   selector: 'app-hashrate-chart-pools',
@@ -30,7 +30,7 @@ export class HashrateChartPoolsComponent implements OnInit {
   @Input() left: number | string = 25;
 
   miningWindowPreference: string;
-  radioGroupForm: FormGroup;
+  radioGroupForm: UntypedFormGroup;
 
   chartOptions: EChartsOption = {};
   chartInitOptions = {
@@ -48,10 +48,11 @@ export class HashrateChartPoolsComponent implements OnInit {
     @Inject(LOCALE_ID) public locale: string,
     private seoService: SeoService,
     private apiService: ApiService,
-    private formBuilder: FormBuilder,
+    private formBuilder: UntypedFormBuilder,
     private cd: ChangeDetectorRef,
     private storageService: StorageService,
-    private miningService: MiningService
+    private miningService: MiningService,
+    private route: ActivatedRoute,
   ) {
     this.radioGroupForm = this.formBuilder.group({ dateSpan: '1y' });
     this.radioGroupForm.controls.dateSpan.setValue('1y');
@@ -61,13 +62,21 @@ export class HashrateChartPoolsComponent implements OnInit {
     let firstRun = true;
 
     this.seoService.setTitle($localize`:@@mining.pools-historical-dominance:Pools Historical Dominance`);
-    this.miningWindowPreference = this.miningService.getDefaultTimespan('1m');
+    this.miningWindowPreference = this.miningService.getDefaultTimespan('6m');
     this.radioGroupForm = this.formBuilder.group({ dateSpan: this.miningWindowPreference });
     this.radioGroupForm.controls.dateSpan.setValue(this.miningWindowPreference);
 
+    this.route
+      .fragment
+      .subscribe((fragment) => {
+        if (['6m', '1y', '2y', '3y', 'all'].indexOf(fragment) > -1) {
+          this.radioGroupForm.controls.dateSpan.setValue(fragment, { emitEvent: false });
+        }
+      });
+
     this.hashrateObservable$ = this.radioGroupForm.get('dateSpan').valueChanges
       .pipe(
-        startWith(this.miningWindowPreference),
+        startWith(this.radioGroupForm.controls.dateSpan.value),
         switchMap((timespan) => {
           if (!firstRun) {
             this.storageService.setValue('miningWindowPreference', timespan);
@@ -155,7 +164,7 @@ export class HashrateChartPoolsComponent implements OnInit {
           color: 'grey',
           fontSize: 15
         },
-        text: `Indexing in progess`,
+        text: $localize`:@@23555386d8af1ff73f297e89dd4af3f4689fb9dd:Indexing blocks`,
         left: 'center',
         top: 'center',
       };
@@ -186,7 +195,7 @@ export class HashrateChartPoolsComponent implements OnInit {
         borderColor: '#000',
         formatter: function (data) {
           const date = new Date(data[0].data[0]).toLocaleDateString(this.locale, { year: 'numeric', month: 'short', day: 'numeric' });
-          let tooltip = `<b style="color: white; margin-left: 18px">${date}</b><br>`;
+          let tooltip = `<b style="color: white; margin-left: 2px">${date}</b><br>`;
           data.sort((a, b) => b.data[1] - a.data[1]);
           for (const pool of data) {
             if (pool.data[1] > 0) {

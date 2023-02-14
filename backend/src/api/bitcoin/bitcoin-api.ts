@@ -14,14 +14,32 @@ class BitcoinApi implements AbstractBitcoinApi {
     this.bitcoindClient = bitcoinClient;
   }
 
-  $getRawTransaction(txId: string, skipConversion = false, addPrevout = false, blockHash?: string): Promise<IEsploraApi.Transaction> {
+  static convertBlock(block: IBitcoinApi.Block): IEsploraApi.Block {
+    return {
+      id: block.hash,
+      height: block.height,
+      version: block.version,
+      timestamp: block.time,
+      bits: parseInt(block.bits, 16),
+      nonce: block.nonce,
+      difficulty: block.difficulty,
+      merkle_root: block.merkleroot,
+      tx_count: block.nTx,
+      size: block.size,
+      weight: block.weight,
+      previousblockhash: block.previousblockhash,
+    };
+  }
+
+
+  $getRawTransaction(txId: string, skipConversion = false, addPrevout = false, lazyPrevouts = false): Promise<IEsploraApi.Transaction> {
     // If the transaction is in the mempool we already converted and fetched the fee. Only prevouts are missing
     const txInMempool = mempool.getMempool()[txId];
     if (txInMempool && addPrevout) {
       return this.$addPrevouts(txInMempool);
     }
 
-    return this.bitcoindClient.getRawTransaction(txId, true, blockHash)
+    return this.bitcoindClient.getRawTransaction(txId, true)
       .then((transaction: IBitcoinApi.Transaction) => {
         if (skipConversion) {
           transaction.vout.forEach((vout) => {
@@ -29,7 +47,7 @@ class BitcoinApi implements AbstractBitcoinApi {
           });
           return transaction;
         }
-        return this.$convertTransaction(transaction, addPrevout);
+        return this.$convertTransaction(transaction, addPrevout, lazyPrevouts);
       })
       .catch((e: Error) => {
         if (e.message.startsWith('The genesis block coinbase')) {
@@ -39,10 +57,22 @@ class BitcoinApi implements AbstractBitcoinApi {
       });
   }
 
+  $getTransactionHex(txId: string): Promise<string> {
+    return this.$getRawTransaction(txId, true)
+      .then((tx) => tx.hex || '');
+  }
+
   $getBlockHeightTip(): Promise<number> {
     return this.bitcoindClient.getChainTips()
       .then((result: IBitcoinApi.ChainTips[]) => {
         return result.find(tip => tip.status === 'active')!.height;
+      });
+  }
+
+  $getBlockHashTip(): Promise<string> {
+    return this.bitcoindClient.getChainTips()
+      .then((result: IBitcoinApi.ChainTips[]) => {
+        return result.find(tip => tip.status === 'active')!.hash;
       });
   }
 
@@ -51,8 +81,9 @@ class BitcoinApi implements AbstractBitcoinApi {
       .then((rpcBlock: IBitcoinApi.Block) => rpcBlock.tx);
   }
 
-  $getRawBlock(hash: string): Promise<string> {
-    return this.bitcoindClient.getBlock(hash, 0);
+  $getRawBlock(hash: string): Promise<Buffer> {
+    return this.bitcoindClient.getBlock(hash, 0)
+      .then((raw: string) => Buffer.from(raw, "hex"));
   }
 
   $getBlockHash(height: number): Promise<string> {
@@ -105,11 +136,21 @@ class BitcoinApi implements AbstractBitcoinApi {
     return this.bitcoindClient.sendRawTransaction(rawTransaction);
   }
 
+  async $getOutspend(txId: string, vout: number): Promise<IEsploraApi.Outspend> {
+    const txOut = await this.bitcoindClient.getTxOut(txId, vout, false);
+    return {
+      spent: txOut === null,
+      status: {
+        confirmed: true,
+      }
+    };
+  }
+
   async $getOutspends(txId: string): Promise<IEsploraApi.Outspend[]> {
     const outSpends: IEsploraApi.Outspend[] = [];
     const tx = await this.$getRawTransaction(txId, true, false);
     for (let i = 0; i < tx.vout.length; i++) {
-      if (tx.status && tx.status.block_height == 0) {
+      if (tx.status && tx.status.block_height === 0) {
         outSpends.push({
           spent: false
         });
@@ -123,12 +164,21 @@ class BitcoinApi implements AbstractBitcoinApi {
     return outSpends;
   }
 
+  async $getBatchedOutspends(txId: string[]): Promise<IEsploraApi.Outspend[][]> {
+    const outspends: IEsploraApi.Outspend[][] = [];
+    for (const tx of txId) {
+      const outspend = await this.$getOutspends(tx);
+      outspends.push(outspend);
+    }
+    return outspends;
+  }
+
   $getEstimatedHashrate(blockHeight: number): Promise<number> {
     // 120 is the default block span in Core
     return this.bitcoindClient.getNetworkHashPs(120, blockHeight);
   }
 
-  protected async $convertTransaction(transaction: IBitcoinApi.Transaction, addPrevout: boolean): Promise<IEsploraApi.Transaction> {
+  protected async $convertTransaction(transaction: IBitcoinApi.Transaction, addPrevout: boolean, lazyPrevouts = false): Promise<IEsploraApi.Transaction> {
     let esploraTransaction: IEsploraApi.Transaction = {
       txid: transaction.txid,
       version: transaction.version,
@@ -161,7 +211,9 @@ class BitcoinApi implements AbstractBitcoinApi {
         sequence: vin.sequence,
         txid: vin.txid || '',
         vout: vin.vout || 0,
-        witness: vin.txinwitness,
+        witness: vin.txinwitness || [],
+        inner_redeemscript_asm: '',
+        inner_witnessscript_asm: '',
       };
     });
 
@@ -174,33 +226,13 @@ class BitcoinApi implements AbstractBitcoinApi {
       };
     }
 
-    if (transaction.confirmations) {
-      esploraTransaction = await this.$calculateFeeFromInputs(esploraTransaction, addPrevout);
-    } else {
+    if (addPrevout) {
+      esploraTransaction = await this.$calculateFeeFromInputs(esploraTransaction, false, lazyPrevouts);
+    } else if (!transaction.confirmations) {
       esploraTransaction = await this.$appendMempoolFeeData(esploraTransaction);
-      if (addPrevout) {
-        esploraTransaction = await this.$calculateFeeFromInputs(esploraTransaction, addPrevout);
-      }
     }
 
     return esploraTransaction;
-  }
-
-  static convertBlock(block: IBitcoinApi.Block): IEsploraApi.Block {
-    return {
-      id: block.hash,
-      height: block.height,
-      version: block.version,
-      timestamp: block.time,
-      bits: parseInt(block.bits, 16),
-      nonce: block.nonce,
-      difficulty: block.difficulty,
-      merkle_root: block.merkleroot,
-      tx_count: block.nTx,
-      size: block.size,
-      weight: block.weight,
-      previousblockhash: block.previousblockhash,
-    };
   }
 
   private translateScriptPubKeyType(outputType: string): string {
@@ -245,7 +277,7 @@ class BitcoinApi implements AbstractBitcoinApi {
       if (vin.prevout) {
         continue;
       }
-      const innerTx = await this.$getRawTransaction(vin.txid, false);
+      const innerTx = await this.$getRawTransaction(vin.txid, false, false);
       vin.prevout = innerTx.vout[vin.vout];
       this.addInnerScriptsToVin(vin);
     }
@@ -271,22 +303,30 @@ class BitcoinApi implements AbstractBitcoinApi {
     return this.bitcoindClient.getRawMemPool(true);
   }
 
-  private async $calculateFeeFromInputs(transaction: IEsploraApi.Transaction, addPrevout: boolean): Promise<IEsploraApi.Transaction> {
+
+  private async $calculateFeeFromInputs(transaction: IEsploraApi.Transaction, addPrevout: boolean, lazyPrevouts: boolean): Promise<IEsploraApi.Transaction> {
     if (transaction.vin[0].is_coinbase) {
       transaction.fee = 0;
       return transaction;
     }
     let totalIn = 0;
-    for (const vin of transaction.vin) {
-      const innerTx = await this.$getRawTransaction(vin.txid, !addPrevout);
-      if (addPrevout) {
-        vin.prevout = innerTx.vout[vin.vout];
-        this.addInnerScriptsToVin(vin);
+
+    for (let i = 0; i < transaction.vin.length; i++) {
+      if (lazyPrevouts && i > 12) {
+        transaction.vin[i].lazy = true;
+        continue;
       }
-      totalIn += innerTx.vout[vin.vout].value;
+      const innerTx = await this.$getRawTransaction(transaction.vin[i].txid, false, false);
+      transaction.vin[i].prevout = innerTx.vout[transaction.vin[i].vout];
+      this.addInnerScriptsToVin(transaction.vin[i]);
+      totalIn += innerTx.vout[transaction.vin[i].vout].value;
     }
-    const totalOut = transaction.vout.reduce((p, output) => p + output.value, 0);
-    transaction.fee = parseFloat((totalIn - totalOut).toFixed(8));
+    if (lazyPrevouts && transaction.vin.length > 12) {
+      transaction.fee = -1;
+    } else {
+      const totalOut = transaction.vout.reduce((p, output) => p + output.value, 0);
+      transaction.fee = parseFloat((totalIn - totalOut).toFixed(8));
+    }
     return transaction;
   }
 

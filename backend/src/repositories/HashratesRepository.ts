@@ -1,3 +1,4 @@
+import { escape } from 'mysql2';
 import { Common } from '../api/common';
 import DB from '../database';
 import logger from '../logger';
@@ -28,10 +29,12 @@ class HashratesRepository {
     }
   }
 
-  public async $getNetworkDailyHashrate(interval: string | null): Promise<any[]> {
+  public async $getRawNetworkDailyHashrate(interval: string | null): Promise<any[]> {
     interval = Common.getSqlInterval(interval);
 
-    let query = `SELECT UNIX_TIMESTAMP(hashrate_timestamp) as timestamp, avg_hashrate as avgHashrate
+    let query = `SELECT
+      UNIX_TIMESTAMP(hashrate_timestamp) as timestamp,
+      avg_hashrate as avgHashrate
       FROM hashrates`;
 
     if (interval) {
@@ -41,6 +44,33 @@ class HashratesRepository {
       query += ` WHERE hashrates.type = 'daily'`;
     }
 
+    query += ` ORDER by hashrate_timestamp`;
+
+    try {
+      const [rows]: any[] = await DB.query(query);
+      return rows;
+    } catch (e) {
+      logger.err('Cannot fetch network hashrate history. Reason: ' + (e instanceof Error ? e.message : e));
+      throw e;
+    }
+  }
+
+  public async $getNetworkDailyHashrate(interval: string | null): Promise<any[]> {
+    interval = Common.getSqlInterval(interval);
+
+    let query = `SELECT
+      CAST(AVG(UNIX_TIMESTAMP(hashrate_timestamp)) as INT) as timestamp,
+      CAST(AVG(avg_hashrate) as DOUBLE) as avgHashrate
+      FROM hashrates`;
+
+    if (interval) {
+      query += ` WHERE hashrate_timestamp BETWEEN DATE_SUB(NOW(), INTERVAL ${interval}) AND NOW()
+        AND hashrates.type = 'daily'`;
+    } else {
+      query += ` WHERE hashrates.type = 'daily'`;
+    }
+
+    query += ` GROUP BY UNIX_TIMESTAMP(hashrate_timestamp) DIV ${86400}`;
     query += ` ORDER by hashrate_timestamp`;
 
     try {
@@ -74,6 +104,9 @@ class HashratesRepository {
     interval = Common.getSqlInterval(interval);
 
     const topPoolsId = (await PoolsRepository.$getPoolsInfo('1w')).map((pool) => pool.poolId);
+    if (topPoolsId.length === 0) {
+      return [];
+    }
 
     let query = `SELECT UNIX_TIMESTAMP(hashrate_timestamp) as timestamp, avg_hashrate as avgHashrate, share, pools.name as poolName
       FROM hashrates
@@ -105,7 +138,7 @@ class HashratesRepository {
   public async $getPoolWeeklyHashrate(slug: string): Promise<any[]> {
     const pool = await PoolsRepository.$getPool(slug);
     if (!pool) {
-      throw new Error(`This mining pool does not exist`);
+      throw new Error('This mining pool does not exist ' + escape(slug));
     }
 
     // Find hashrate boundaries

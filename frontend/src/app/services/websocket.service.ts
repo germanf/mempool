@@ -9,9 +9,9 @@ import { take } from 'rxjs/operators';
 import { TransferState, makeStateKey } from '@angular/platform-browser';
 import { BlockExtended } from '../interfaces/node-api.interface';
 
-const OFFLINE_RETRY_AFTER_MS = 10000;
-const OFFLINE_PING_CHECK_AFTER_MS = 30000;
-const EXPECT_PING_RESPONSE_AFTER_MS = 4000;
+const OFFLINE_RETRY_AFTER_MS = 1000;
+const OFFLINE_PING_CHECK_AFTER_MS = 10000;
+const EXPECT_PING_RESPONSE_AFTER_MS = 5000;
 
 const initData = makeStateKey('/api/v1/init-data');
 
@@ -27,6 +27,8 @@ export class WebsocketService {
   private lastWant: string | null = null;
   private isTrackingTx = false;
   private trackingTxId: string;
+  private isTrackingMempoolBlock = false;
+  private trackingMempoolBlock: number;
   private latestGitCommit = '';
   private onlineCheckTimeout: number;
   private onlineCheckTimeoutTwo: number;
@@ -68,7 +70,7 @@ export class WebsocketService {
         clearTimeout(this.onlineCheckTimeout);
         clearTimeout(this.onlineCheckTimeoutTwo);
 
-        this.stateService.latestBlockHeight = -1;
+        this.stateService.resetChainTip();
 
         this.websocketSubject.complete();
         this.subscription.unsubscribe();
@@ -101,6 +103,9 @@ export class WebsocketService {
           }
           if (this.isTrackingTx) {
             this.startMultiTrackTransaction(this.trackingTxId);
+          }
+          if (this.isTrackingMempoolBlock) {
+            this.startTrackMempoolBlock(this.trackingMempoolBlock);
           }
           this.stateService.connectionState$.next(2);
         }
@@ -157,6 +162,17 @@ export class WebsocketService {
     this.websocketSubject.next({ 'track-asset': 'stop' });
   }
 
+  startTrackMempoolBlock(block: number) {
+    this.websocketSubject.next({ 'track-mempool-block': block });
+    this.isTrackingMempoolBlock = true
+    this.trackingMempoolBlock = block
+  }
+
+  stopTrackMempoolBlock() {
+    this.websocketSubject.next({ 'track-mempool-block': -1 });
+    this.isTrackingMempoolBlock = false
+  }
+
   startTrackBisqMarket(market: string) {
     this.websocketSubject.next({ 'track-bisq-market': market });
   }
@@ -208,12 +224,14 @@ export class WebsocketService {
   handleResponse(response: WebsocketResponse) {
     if (response.blocks && response.blocks.length) {
       const blocks = response.blocks;
+      let maxHeight = 0;
       blocks.forEach((block: BlockExtended) => {
         if (block.height > this.stateService.latestBlockHeight) {
-          this.stateService.latestBlockHeight = block.height;
+          maxHeight = Math.max(maxHeight, block.height);
           this.stateService.blocks$.next([block, false]);
         }
       });
+      this.stateService.updateChainTip(maxHeight);
     }
 
     if (response.tx) {
@@ -222,7 +240,7 @@ export class WebsocketService {
 
     if (response.block) {
       if (response.block.height > this.stateService.latestBlockHeight) {
-        this.stateService.latestBlockHeight = response.block.height;
+        this.stateService.updateChainTip(response.block.height);
         this.stateService.blocks$.next([response.block, !!response.txConfirmed]);
       }
 
@@ -263,6 +281,10 @@ export class WebsocketService {
       this.stateService.difficultyAdjustment$.next(response.da);
     }
 
+    if (response.fees) {
+     this.stateService.recommendedFees$.next(response.fees); 
+    }
+
     if (response.backendInfo) {
       this.stateService.backendInfo$.next(response.backendInfo);
 
@@ -287,6 +309,16 @@ export class WebsocketService {
       response['block-transactions'].forEach((addressTransaction: Transaction) => {
         this.stateService.blockTransactions$.next(addressTransaction);
       });
+    }
+
+    if (response['projected-block-transactions']) {
+      if (response['projected-block-transactions'].index == this.trackingMempoolBlock) {
+        if (response['projected-block-transactions'].blockTransactions) {
+          this.stateService.mempoolBlockTransactions$.next(response['projected-block-transactions'].blockTransactions);
+        } else if (response['projected-block-transactions'].delta) {
+          this.stateService.mempoolBlockDelta$.next(response['projected-block-transactions'].delta);
+        }
+      }
     }
 
     if (response['live-2h-chart']) {

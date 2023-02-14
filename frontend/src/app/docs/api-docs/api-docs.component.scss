@@ -1,10 +1,30 @@
+.center {
+  text-align: center;
+}
+
+.note {
+  font-style: italic;
+}
+
 .text-small {
   font-size: 12px;
+}
+
+.container-xl {
+  display: flex;
+  min-height: 75vh;
+  flex-direction: column;
 }
 
 code {
   background-color: #1d1f31;
   font-family: Consolas,Monaco,Lucida Console,Liberation Mono,DejaVu Sans Mono,Bitstream Vera Sans Mono,Courier New;
+}
+
+.math {
+  font-family: monospace;
+  margin-left: 4px;
+  margin-right: 4px;
 }
 
 tr {
@@ -22,8 +42,54 @@ li.nav-item {
   }
 }
 
-.no-bottom-space {
+ul.no-bull {
+  list-style: none;
+}
+
+ul.no-bull.block-audit li code {
+  text-transform: uppercase;
+}
+
+ul.no-bull.block-audit li span {
+  margin-right: 10px;
+}
+
+ul.no-bull.block-audit li span.block-audit-highlight-color.added {
+  color: #0099ff;
+}
+
+ul.no-bull.block-audit li span.block-audit-highlight-color.removed {
+  color: #f344df;
+}
+
+ul.no-bull.block-audit li span.block-audit-highlight-color.recent {
+  color: #8a3480;
+}
+
+ul.no-bull.block-audit li span.block-audit-highlight-color.marginal {
+  color: #414127;
+}
+
+ul.no-bull.block-audit li p {
+  margin-left: 25px;
+  margin-top: 5px;
+}
+
+ul.no-bull.block-audit li ul {
+  margin-left: 15px;
+  margin-bottom: 15px;
+}
+
+ul.no-bull.block-audit code{
+  background-color: inherit;
+}
+
+.doc-welcome-note {
   margin-bottom: 0;
+}
+
+.api-note {
+  margin-top: 1rem;
 }
 
 .nav-tabs .nav-link.active {
@@ -112,6 +178,10 @@ li.nav-item {
   float: right;
 }
 
+.doc-content.no-sidebar {
+  width: 100%
+}
+
 h3 {
   margin: 2rem 0 0 0;
 }
@@ -150,6 +220,7 @@ h3 {
   border-radius: 0.25rem;
   font-family: monospace;
   float: right;
+  white-space: nowrap;
 }
 
 .endpoint-container .section-header table {
@@ -197,7 +268,27 @@ h3 {
   display: none;
 }
 
+#disclaimer {
+  background-color: #1d1f31;
+  padding: 24px;
+  margin: 24px 0;
+}
+
+#disclaimer svg {
+  width: 50px;
+  height: auto;
+  margin-right: 32px;
+}
+
+#disclaimer p:last-child {
+  margin-bottom: 0;
+}
+
 @media (max-width: 992px) {
+
+  h3 {
+    margin: 1.5rem 0 0 0;
+  }
 
   .hide-on-mobile {
     display: none;
@@ -205,7 +296,6 @@ h3 {
 
   .doc-content {
     width: 100%;
-    margin-top: -20px;
     float: unset;
   }
 
@@ -237,6 +327,10 @@ h3 {
     top: -10000px;
     opacity: 0;
     transition: 0.5s opacity ease;
+  }
+
+  .doc-welcome-note {
+    font-size: 0.85rem;
   }
 }
 

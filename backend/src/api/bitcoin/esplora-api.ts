@@ -20,8 +20,18 @@ class ElectrsApi implements AbstractBitcoinApi {
       .then((response) => response.data);
   }
 
+  $getTransactionHex(txId: string): Promise<string> {
+    return axios.get<string>(config.ESPLORA.REST_API_URL + '/tx/' + txId + '/hex', this.axiosConfig)
+      .then((response) => response.data);
+  }
+
   $getBlockHeightTip(): Promise<number> {
     return axios.get<number>(config.ESPLORA.REST_API_URL + '/blocks/tip/height', this.axiosConfig)
+      .then((response) => response.data);
+  }
+
+  $getBlockHashTip(): Promise<string> {
+    return axios.get<string>(config.ESPLORA.REST_API_URL + '/blocks/tip/hash', this.axiosConfig)
       .then((response) => response.data);
   }
 
@@ -45,6 +55,11 @@ class ElectrsApi implements AbstractBitcoinApi {
       .then((response) => response.data);
   }
 
+  $getRawBlock(hash: string): Promise<Buffer> {
+    return axios.get<string>(config.ESPLORA.REST_API_URL + '/block/' + hash + "/raw", { ...this.axiosConfig, responseType: 'arraybuffer' })
+      .then((response) => { return Buffer.from(response.data); });
+  }
+
   $getAddress(address: string): Promise<IEsploraApi.Address> {
     throw new Error('Method getAddress not implemented.');
   }
@@ -61,8 +76,23 @@ class ElectrsApi implements AbstractBitcoinApi {
     throw new Error('Method not implemented.');
   }
 
-  $getOutspends(): Promise<IEsploraApi.Outspend[]> {
-    throw new Error('Method not implemented.');
+  $getOutspend(txId: string, vout: number): Promise<IEsploraApi.Outspend> {
+    return axios.get<IEsploraApi.Outspend>(config.ESPLORA.REST_API_URL + '/tx/' + txId + '/outspend/' + vout, this.axiosConfig)
+      .then((response) => response.data);
+  }
+
+  $getOutspends(txId: string): Promise<IEsploraApi.Outspend[]> {
+    return axios.get<IEsploraApi.Outspend[]>(config.ESPLORA.REST_API_URL + '/tx/' + txId + '/outspends', this.axiosConfig)
+      .then((response) => response.data);
+  }
+
+  async $getBatchedOutspends(txId: string[]): Promise<IEsploraApi.Outspend[][]> {
+    const outspends: IEsploraApi.Outspend[][] = [];
+    for (const tx of txId) {
+      const outspend = await this.$getOutspends(tx);
+      outspends.push(outspend);
+    }
+    return outspends;
   }
 }
 

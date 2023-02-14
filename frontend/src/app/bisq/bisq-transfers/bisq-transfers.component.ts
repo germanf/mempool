@@ -1,9 +1,9 @@
 import { Component, OnInit, ChangeDetectionStrategy, Input, OnChanges } from '@angular/core';
-import { BisqTransaction } from 'src/app/bisq/bisq.interfaces';
-import { StateService } from 'src/app/services/state.service';
+import { BisqTransaction } from '../../bisq/bisq.interfaces';
+import { StateService } from '../../services/state.service';
 import { map } from 'rxjs/operators';
 import { Observable } from 'rxjs';
-import { Block } from 'src/app/interfaces/electrs.interface';
+import { Block } from '../../interfaces/electrs.interface';
 
 @Component({
   selector: 'app-bisq-transfers',
@@ -31,7 +31,7 @@ export class BisqTransfersComponent implements OnInit, OnChanges {
   }
 
   ngOnChanges() {
-    this.totalOutput = this.tx.outputs.filter((output) => output.isVerified).reduce((acc, output) => acc + output.bsqAmount, 0);;
+    this.totalOutput = this.tx.outputs.filter((output) => output.isVerified).reduce((acc, output) => acc + output.bsqAmount, 0);
   }
 
   switchCurrency() {

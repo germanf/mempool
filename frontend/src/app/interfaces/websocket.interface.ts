@@ -21,9 +21,11 @@ export interface WebsocketResponse {
   loadingIndicators?: ILoadingIndicators;
   backendInfo?: IBackendInfo;
   da?: DifficultyAdjustment;
+  fees?: Recommendedfees;
   'track-tx'?: string;
   'track-address'?: string;
   'track-asset'?: string;
+  'track-mempool-block'?: number;
   'watch-mempool'?: boolean;
   'track-bisq-market'?: string;
 }
@@ -43,6 +45,16 @@ export interface MempoolBlock {
   index: number;
 }
 
+export interface MempoolBlockWithTransactions extends MempoolBlock {
+  transactionIds: string[];
+  transactions: TransactionStripped[];
+}
+
+export interface MempoolBlockDelta {
+  added: TransactionStripped[],
+  removed: string[],
+}
+
 export interface MempoolInfo {
   loaded: boolean;                 //  (boolean) True if the mempool is fully loaded
   size: number;                    //  (numeric) Current tx count
@@ -58,10 +70,20 @@ export interface TransactionStripped {
   fee: number;
   vsize: number;
   value: number;
+  status?: 'found' | 'missing' | 'fresh' | 'added' | 'censored' | 'selected';
+  context?: 'projected' | 'actual';
 }
 
 export interface IBackendInfo {
   hostname: string;
   gitCommit: string;
   version: string;
+}
+
+export interface Recommendedfees {
+  fastestFee: number;
+  halfHourFee: number;
+  hourFee: number;
+  minimumFee: number;
+  economyFee: number;
 }
